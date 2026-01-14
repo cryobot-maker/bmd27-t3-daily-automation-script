@@ -1,0 +1,12 @@
+requests
+selenium
+beautifulsoup4
+gspread
+google-auth
+google-auth-oauthlib
+google-auth-httplib2
+numpy
+pandas
+python-dotenv
+webdriver-manager
+oauth2client
