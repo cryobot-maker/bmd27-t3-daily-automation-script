@@ -28,15 +28,15 @@ BATCH_NAME = "PGDM (BMD) (2025-2027) III"
 
 # --- COLORS ---
 SUBJECT_COLORS = {
-    "OPR":  {"red": 0.85, "green": 0.92, "blue": 1.0}, 
-    "STM":  {"red": 1.0,  "green": 0.95, "blue": 0.8}, 
-    "FM2":  {"red": 0.9,  "green": 1.0,  "blue": 0.9}, 
-    "BRM":  {"red": 0.95, "green": 0.9,  "blue": 1.0}, 
-    "ORM2": {"red": 1.0,  "green": 1.0,  "blue": 0.8}, 
-    "HRM":  {"red": 1.0,  "green": 0.85, "blue": 0.85},
-    "BLA":  {"red": 0.8,  "green": 1.0,  "blue": 1.0}, 
-    "BOB2": {"red": 0.8,  "green": 0.8,  "blue": 1.0}, 
-    "Act":  {"red": 0.95, "green": 0.95, "blue": 0.95} 
+    "OPR":  {"red": 0.65, "green": 0.82, "blue": 1.0},
+    "STM":  {"red": 1.0,  "green": 0.85, "blue": 0.6},
+    "FM2":  {"red": 0.6,  "green": 1.0,  "blue": 0.6},
+    "BRM":  {"red": 0.8,  "green": 0.7,  "blue": 1.0},
+    "ORM2": {"red": 1.0,  "green": 0.95, "blue": 0.6},
+    "HRM":  {"red": 1.0,  "green": 0.65, "blue": 0.65},
+    "BLA":  {"red": 0.5,  "green": 0.9,  "blue": 0.9},
+    "BOB2": {"red": 0.6,  "green": 0.6,  "blue": 1.0},
+    "Act":  {"red": 0.85, "green": 0.85, "blue": 0.85}
 }
 
 COURSE_DETAILS_LIST = [
