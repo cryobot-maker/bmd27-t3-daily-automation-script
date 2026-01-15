@@ -2,9 +2,9 @@ name: Daily Schedule
 
 on:
   schedule:
-    # Runs at minute 30 of every hour from 00:00 to 17:00 UTC
-    # This equals 06:00 AM to 11:00 PM IST
-    - cron: '30 2-15 * * *'
+    # Runs at minute 5 AND minute 35 of hours 2 through 15 UTC
+    # Example: 08:05 AM IST, 08:35 AM IST, 09:05 AM IST...
+    - cron: '5,35 2-15 * * *'
   # Allows you to manually trigger the script for testing
   workflow_dispatch:
 
