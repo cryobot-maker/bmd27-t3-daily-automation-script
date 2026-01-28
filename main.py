@@ -91,16 +91,34 @@ def parse_cell_data(html_content):
     return parsed_classes
 
 def get_shifted_slots(date_str, s1, s2, s3):
+    """
+    Decides class placement based on date.
+    Returns [9am_slot, 11am_slot, 2pm_slot, 4pm_slot]
+    """
     try:
         parts = date_str.split()
         if len(parts) >= 2:
             clean_date_str = f"{parts[0]} {parts[1]}"
             dt = datetime.strptime(clean_date_str, "%b %d,%Y")
-            cutoff = datetime(2026, 1, 26)
-            if dt <= cutoff: return [[], s1, s2, s3]
-            else: return [s1, s2, s3, []]
-        else: return [s1, s2, s3, []]
-    except: return [s1, s2, s3, []]
+            
+            # --- SHIFT LOGIC ---
+            # Period 1: Everything before and including Jan 26
+            period_1_shift = (dt <= datetime(2026, 1, 26))
+            
+            # Period 2: Jan 29, 30, and 31 (New Request)
+            period_2_shift = (datetime(2026, 1, 29) <= dt <= datetime(2026, 1, 31))
+            
+            if period_1_shift or period_2_shift:
+                # 9am Empty, others shifted right
+                return [[], s1, s2, s3]
+            else:
+                # Normal Schedule
+                return [s1, s2, s3, []]
+        else: 
+            return [s1, s2, s3, []]
+    except Exception as e: 
+        print(f"Date Parse Warning: {e}")
+        return [s1, s2, s3, []]
 
 def update_google_sheet(sheet, data_rows):
     clean_slate(sheet)
