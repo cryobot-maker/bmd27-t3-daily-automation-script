@@ -2,7 +2,7 @@ import time
 import pandas as pd
 import gspread
 import os
-import json # <--- NEW IMPORT
+import json
 from datetime import datetime
 from dotenv import load_dotenv 
 from oauth2client.service_account import ServiceAccountCredentials
@@ -28,21 +28,21 @@ BATCH_NAME = "PGDM (BMD) (2025-2027) III"
 
 # --- COLORS ---
 SUBJECT_COLORS = {
-    "OPR":  {"red": 0.65, "green": 0.82, "blue": 1.0},
-    "STM":  {"red": 1.0,  "green": 0.85, "blue": 0.6},
-    "FM2":  {"red": 0.6,  "green": 1.0,  "blue": 0.6},
-    "BRM":  {"red": 0.8,  "green": 0.7,  "blue": 1.0},
-    "ORM2": {"red": 1.0,  "green": 0.95, "blue": 0.6},
-    "HRM":  {"red": 1.0,  "green": 0.65, "blue": 0.65},
-    "BLA":  {"red": 0.5,  "green": 0.9,  "blue": 0.9},
-    "BOB2": {"red": 0.6,  "green": 0.6,  "blue": 1.0},
-    "Act":  {"red": 0.85, "green": 0.85, "blue": 0.85}
+    "OPR":  {"red": 0.85, "green": 0.92, "blue": 1.0}, 
+    "STM":  {"red": 1.0,  "green": 0.95, "blue": 0.8}, 
+    "FM2":  {"red": 0.9,  "green": 1.0,  "blue": 0.9}, 
+    "BRM":  {"red": 0.95, "green": 0.9,  "blue": 1.0}, 
+    "ORM2": {"red": 1.0,  "green": 1.0,  "blue": 0.8}, 
+    "HRM":  {"red": 1.0,  "green": 0.85, "blue": 0.85},
+    "BLA":  {"red": 0.8,  "green": 1.0,  "blue": 1.0}, 
+    "BOB2": {"red": 0.8,  "green": 0.8,  "blue": 1.0}, 
+    "Act":  {"red": 0.95, "green": 0.95, "blue": 0.95} 
 }
 
 COURSE_DETAILS_LIST = [
     {"code": "FM2",  "name": "Financial Management - II",            "credit": 3, "faculty": "Dr Vaibhav Lalwani, Dr Gourav Vallabh"},
-    {"code": "ORM2", "name": "Operations Management - II",           "credit": 3, "faculty": "Dipankar Bose"},
-    {"code": "BOB2", "name": "Org. Structure, Design and Change",    "credit": 3, "faculty": "Dipak Bhattacharyya"},
+    {"code": "ORM2", "name": "Operations Management - II",           "credit": 3, "faculty": "Visiting Faculty"},
+    {"code": "BOB2", "name": "Org. Structure, Design and Change",    "credit": 3, "faculty": "TBD"},
     {"code": "STM",  "name": "Strategic Management",                 "credit": 3, "faculty": "Dr Faisal Mohammad Ahsan, Dr Sanchayan Nath"},
     {"code": "BLA",  "name": "Business Law",                         "credit": 2, "faculty": "Dr Paramjyot Singh"},
     {"code": "HRM",  "name": "Human Resource Management",            "credit": 2, "faculty": "Dr Abhishek Singh, Mr Harbhajan Singh"},
@@ -90,10 +90,11 @@ def parse_cell_data(html_content):
         parsed_classes.append({"text": final_text, "full_content": block, "type": c_type})
     return parsed_classes
 
-def get_shifted_slots(date_str, s1, s2, s3):
+def get_shifted_slots(date_str, s0, s1, s2, s3):
     """
     Decides class placement based on date.
-    Returns [9am_slot, 11am_slot, 2pm_slot, 4pm_slot]
+    Inputs: s0(8am), s1(9am), s2(11am), s3(2pm)
+    Returns [8am_slot, 9am_slot, 11am_slot, 2pm_slot, 4pm_slot]
     """
     try:
         parts = date_str.split()
@@ -102,35 +103,41 @@ def get_shifted_slots(date_str, s1, s2, s3):
             dt = datetime.strptime(clean_date_str, "%b %d,%Y")
             
             # --- SHIFT LOGIC ---
-            # Period 1: Everything before and including Jan 26
+            # Period 1: Jan 26 and before
             period_1_shift = (dt <= datetime(2026, 1, 26))
             
-            # Period 2: Jan 29, 30, and 31 (New Request)
+            # Period 2: Jan 29, 30, 31
             period_2_shift = (datetime(2026, 1, 29) <= dt <= datetime(2026, 1, 31))
             
             if period_1_shift or period_2_shift:
-                # 9am Empty, others shifted right
-                return [[], s1, s2, s3]
+                # Cold Weather (Starts 11 AM)
+                # 8am(s0) & 9am(s1 original) -> Cleared/Moved
+                # We perform the shift: s1 data moves to 11am, s2 moves to 2pm, s3 moves to 4pm
+                return [[], [], s1, s2, s3]
             else:
                 # Normal Schedule
-                return [s1, s2, s3, []]
+                return [s0, s1, s2, s3, []]
         else: 
-            return [s1, s2, s3, []]
+            return [s0, s1, s2, s3, []]
     except Exception as e: 
         print(f"Date Parse Warning: {e}")
-        return [s1, s2, s3, []]
+        return [s0, s1, s2, s3, []]
 
 def update_google_sheet(sheet, data_rows):
     clean_slate(sheet)
-    headers = ["Date", "09:00 AM - 10:30 AM", "11:00 AM - 12:30 PM", "14:00 PM - 15:30 PM", "16:00 PM - 17:30 PM"]
+    # UPDATED HEADERS: Added 8:00 AM Slot
+    headers = ["Date", "08:00 AM - 08:30 AM", "09:00 AM - 10:30 AM", "11:00 AM - 12:30 PM", "14:00 PM - 15:30 PM", "16:00 PM - 17:30 PM"]
     final_rows = [headers]
     requests = []
     current_row_idx = 1
     
     for row in data_rows:
         date_str = row['Date']
-        final_slots = get_shifted_slots(date_str, row['Slot1'], row['Slot2'], row['Slot3'])
-        max_depth = max(len(final_slots[0]), len(final_slots[1]), len(final_slots[2]), len(final_slots[3]))
+        # Pass all 4 slots to the shifter
+        final_slots = get_shifted_slots(date_str, row['Slot0'], row['Slot1'], row['Slot2'], row['Slot3'])
+        
+        # Check depth of all 5 possible output columns
+        max_depth = max(len(final_slots[0]), len(final_slots[1]), len(final_slots[2]), len(final_slots[3]), len(final_slots[4]))
         if max_depth == 0: max_depth = 1
         
         if max_depth > 1:
@@ -142,8 +149,9 @@ def update_google_sheet(sheet, data_rows):
             })
 
         for i in range(max_depth):
-            current_data = ["", "", "", "", ""] 
+            current_data = ["", "", "", "", "", ""] # 6 Columns now
             if i == 0: current_data[0] = date_str
+            
             for slot_idx, slot_content in enumerate(final_slots):
                 col_index = slot_idx + 1
                 if i < len(slot_content):
@@ -182,23 +190,23 @@ def update_google_sheet(sheet, data_rows):
 
     sheet.update(range_name="A1", values=final_rows)
     
-    # Headers
+    # Header Format (A1:F1)
     requests.append({
         "repeatCell": {
-            "range": {"sheetId": sheet.id, "startRowIndex": 0, "endRowIndex": 1, "startColumnIndex": 0, "endColumnIndex": 5},
+            "range": {"sheetId": sheet.id, "startRowIndex": 0, "endRowIndex": 1, "startColumnIndex": 0, "endColumnIndex": 6},
             "cell": {"userEnteredFormat": {"backgroundColor": {"red": 0.8, "green": 0.0, "blue": 0.0}, "textFormat": {"foregroundColor": {"red": 1.0, "green": 1.0, "blue": 1.0}, "bold": True}, "horizontalAlignment": "CENTER", "verticalAlignment": "MIDDLE"}},
             "fields": "userEnteredFormat(backgroundColor,textFormat,horizontalAlignment,verticalAlignment)"
         }
     })
-    # Borders
+    # Borders (A to F)
     requests.append({
         "updateBorders": {
-            "range": {"sheetId": sheet.id, "startRowIndex": 0, "endRowIndex": current_row_idx, "startColumnIndex": 0, "endColumnIndex": 5},
+            "range": {"sheetId": sheet.id, "startRowIndex": 0, "endRowIndex": current_row_idx, "startColumnIndex": 0, "endColumnIndex": 6},
             "top": {"style": "SOLID", "width": 1}, "bottom": {"style": "SOLID", "width": 1}, "left": {"style": "SOLID", "width": 1}, "right": {"style": "SOLID", "width": 1}, "innerHorizontal": {"style": "SOLID", "width": 1}, "innerVertical": {"style": "SOLID", "width": 1}
         }
     })
     # Column Widths
-    requests.append({"updateDimensionProperties": {"range": {"sheetId": sheet.id, "dimension": "COLUMNS", "startIndex": 0, "endIndex": 5}, "properties": {"pixelSize": 220}, "fields": "pixelSize"}})
+    requests.append({"updateDimensionProperties": {"range": {"sheetId": sheet.id, "dimension": "COLUMNS", "startIndex": 0, "endIndex": 6}, "properties": {"pixelSize": 200}, "fields": "pixelSize"}})
 
     if requests: sheet.spreadsheet.batch_update({"requests": requests})
 
@@ -208,10 +216,11 @@ def update_info_table(sheet):
     for course in COURSE_DETAILS_LIST:
         data_rows.append([course["code"], course["name"], course["credit"], course["faculty"]])
     
+    # Info Table still starts at H1 (Index 7) - Spacer G is Index 6
     sheet.update(range_name="H1", values=[headers] + data_rows)
     requests = []
     
-    # Header Format (H1:K1)
+    # Header Format
     requests.append({
         "repeatCell": {
             "range": {"sheetId": sheet.id, "startRowIndex": 0, "endRowIndex": 1, "startColumnIndex": 7, "endColumnIndex": 11},
@@ -291,29 +300,31 @@ def fetch_and_update():
 
         for row in rows:
             cells = row.find_all(['th', 'td'])
-            if len(cells) < 4: continue
+            # UPDATED CHECK: We now expect at least 5 cells (Date + 4 Slots)
+            if len(cells) < 5: continue
+            
             raw_date = cells[0].get_text(separator=" ").replace('\xa0', '').strip()
             if len(raw_date) > 2: 
                 last_date = raw_date
                 final_date = raw_date
             else: final_date = last_date
+            
             scraped_data.append({
                 "Date": final_date,
-                "Slot1": parse_cell_data(str(cells[1])),
-                "Slot2": parse_cell_data(str(cells[2])),
-                "Slot3": parse_cell_data(str(cells[3]))
+                "Slot0": parse_cell_data(str(cells[1])), # 8 AM
+                "Slot1": parse_cell_data(str(cells[2])), # 9 AM
+                "Slot2": parse_cell_data(str(cells[3])), # 11 AM
+                "Slot3": parse_cell_data(str(cells[4]))  # 2 PM
             })
             
         print(f"Bot: Found {len(scraped_data)} rows. Updating Sheets...")
         
-        # --- NEW: CREDENTIAL LOADING LOGIC ---
+        # --- CREDENTIAL LOADING ---
         scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
         
-        # Option A: Check for Secret in Env (Cloud Robot)
         if os.getenv("GOOGLE_CREDENTIALS_JSON"):
             creds_dict = json.loads(os.getenv("GOOGLE_CREDENTIALS_JSON"))
             creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
-        # Option B: Fallback to local file (Laptop run)
         else:
             creds = ServiceAccountCredentials.from_json_keyfile_name("credentials.json", scope)
             
@@ -321,7 +332,7 @@ def fetch_and_update():
         sheet = client.open(SHEET_NAME).sheet1
         update_google_sheet(sheet, scraped_data)
         update_info_table(sheet)
-        print("Bot: SUCCESS! Schedule shifted & updated.")
+        print("Bot: SUCCESS! Schedule updated with 8 AM slot.")
     except Exception as e:
         print(f"ERROR: {e}")
         driver.save_screenshot("error_final.png")
