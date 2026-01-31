@@ -41,8 +41,8 @@ SUBJECT_COLORS = {
 
 COURSE_DETAILS_LIST = [
     {"code": "FM2",  "name": "Financial Management - II",            "credit": 3, "faculty": "Dr Vaibhav Lalwani, Dr Gourav Vallabh"},
-    {"code": "ORM2", "name": "Operations Management - II",           "credit": 3, "faculty": "Visiting Faculty"},
-    {"code": "BOB2", "name": "Org. Structure, Design and Change",    "credit": 3, "faculty": "TBD"},
+    {"code": "ORM2", "name": "Operations Management - II",           "credit": 3, "faculty": "Dipankar Bose, Alok Raj"},
+    {"code": "BOB2", "name": "Org. Structure, Design and Change",    "credit": 3, "faculty": "Dipak Bhattacharyya"},
     {"code": "STM",  "name": "Strategic Management",                 "credit": 3, "faculty": "Dr Faisal Mohammad Ahsan, Dr Sanchayan Nath"},
     {"code": "BLA",  "name": "Business Law",                         "credit": 2, "faculty": "Dr Paramjyot Singh"},
     {"code": "HRM",  "name": "Human Resource Management",            "credit": 2, "faculty": "Dr Abhishek Singh, Mr Harbhajan Singh"},
