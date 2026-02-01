@@ -5,6 +5,7 @@ on:
     # Runs at minute 5 AND minute 35 of hours 2 through 15 UTC
     # Example: 08:05 AM IST, 08:35 AM IST, 09:05 AM IST...
     - cron: '5,35 2-15 * * *'
+  
   # Allows you to manually trigger the script for testing
   workflow_dispatch:
 
@@ -23,15 +24,24 @@ jobs:
         with:
           python-version: '3.12'
 
-      # 3. Install libraries (requests, selenium, etc.)
+      # 3. Install libraries
       - name: Install dependencies
         run: |
           pip install -r requirements.txt
 
-      # 4. Run your script
-      - name: Run Automation
+      # 4. Run BM Batch Bot
+      - name: Run BM Automation
         env:
           XLRI_USERNAME: ${{ secrets.XLRI_USERNAME }}
           XLRI_PASSWORD: ${{ secrets.XLRI_PASSWORD }}
           GOOGLE_CREDENTIALS_JSON: ${{ secrets.GOOGLE_CREDENTIALS_JSON }}
         run: python main.py
+
+      # 5. Run IEV Batch Bot (Runs even if BM fails)
+      - name: Run IEV Automation
+        if: always() 
+        env:
+          XLRI_USERNAME: ${{ secrets.XLRI_USERNAME }}
+          XLRI_PASSWORD: ${{ secrets.XLRI_PASSWORD }}
+          GOOGLE_CREDENTIALS_JSON: ${{ secrets.GOOGLE_CREDENTIALS_JSON }}
+        run: python main_iev.py
