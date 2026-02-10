@@ -3,7 +3,6 @@ import pandas as pd
 import gspread
 import os
 import json
-import re
 from datetime import datetime
 from dotenv import load_dotenv 
 from oauth2client.service_account import ServiceAccountCredentials
@@ -91,90 +90,64 @@ def parse_cell_data(html_content):
         parsed_classes.append({"text": final_text, "full_content": block, "type": c_type})
     return parsed_classes
 
-def apply_cold_wave_shift(date_str, original_slots, headers):
+def get_shifted_slots(date_str, s0, s1, s2, s3, s4):
     """
-    Dynamically shifts classes if 'Cold Wave' conditions are met.
-    It looks for '09:00' and '11:00' in headers to know WHERE to shift,
-    rather than assuming fixed column numbers.
+    Inputs: 
+    s0: 08:30-21:30 (Weird Slot)
+    s1: 09:00
+    s2: 11:00
+    s3: 14:00
+    s4: 16:00
     """
     try:
         parts = date_str.split()
-        if len(parts) < 2: return original_slots
-        
-        clean_date_str = f"{parts[0]} {parts[1]}"
-        dt = datetime.strptime(clean_date_str, "%b %d,%Y")
-
-        # --- SHIFT DATES ---
-        period_1 = (dt <= datetime(2026, 1, 26))
-        period_2 = (datetime(2026, 1, 29) <= dt <= datetime(2026, 1, 31))
-        
-        if not (period_1 or period_2):
-            return original_slots # No shift needed
-
-        # --- SMART SHIFT LOGIC ---
-        # Create empty new slots
-        new_slots = [[] for _ in original_slots]
-        
-        # Identify indices
-        idx_9am = -1
-        idx_11am = -1
-        idx_2pm = -1
-        idx_4pm = -1 # Not always present
-
-        for i, h in enumerate(headers):
-            h_clean = h.lower()
-            if "09:00" in h_clean: idx_9am = i
-            elif "11:00" in h_clean: idx_11am = i
-            elif "14:00" in h_clean or "02:00" in h_clean: idx_2pm = i
-            elif "16:00" in h_clean or "04:00" in h_clean: idx_4pm = i
-
-        # If we can't find standard slots, abort shift to be safe
-        if idx_9am == -1 or idx_11am == -1:
-            return original_slots
-
-        # Perform Shift
-        # 9am content moves to 11am
-        if idx_9am < len(original_slots) and idx_11am < len(new_slots):
-            new_slots[idx_11am] = original_slots[idx_9am]
-        
-        # 11am content moves to 2pm
-        if idx_11am < len(original_slots) and idx_2pm < len(new_slots):
-            new_slots[idx_2pm] = original_slots[idx_11am]
+        if len(parts) >= 2:
+            clean_date_str = f"{parts[0]} {parts[1]}"
+            dt = datetime.strptime(clean_date_str, "%b %d,%Y")
             
-        # 2pm content moves to 4pm (if 4pm exists, otherwise it vanishes or we append)
-        if idx_2pm < len(original_slots):
-             if idx_4pm != -1 and idx_4pm < len(new_slots):
-                 new_slots[idx_4pm] = original_slots[idx_2pm]
-             elif idx_4pm == -1:
-                 # If 4pm column doesn't exist on website, we can't write to it easily dynamically
-                 # without expanding headers. For now, we drop it or append if your logic allows.
-                 pass 
+            # --- SHIFT LOGIC ---
+            period_1 = (dt <= datetime(2026, 1, 26))
+            period_2 = (datetime(2026, 1, 29) <= dt <= datetime(2026, 1, 31))
+            
+            if period_1 or period_2:
+                # Cold Shift: 9->11, 11->2, 2->4. 
+                # s0 (Weird) stays. s4 (Original 4pm) falls off.
+                return [s0, [], s1, s2, s3]
+            else:
+                # Normal Schedule
+                return [s0, s1, s2, s3, s4]
+        else: 
+            return [s0, s1, s2, s3, s4]
+    except Exception as e: 
+        print(f"Date Parse Warning: {e}")
+        return [s0, s1, s2, s3, s4]
 
-        return new_slots
-
-    except Exception as e:
-        print(f"Shift Logic Error: {e}")
-        return original_slots
-
-def update_google_sheet(sheet, data_rows, headers):
+def update_google_sheet(sheet, data_rows):
     clean_slate(sheet)
     
-    # Headers are now DYNAMIC
+    # --- UPDATED HEADERS FOR 5 SLOTS ---
+    headers = [
+        "Date", 
+        "08:30 AM - 21:30 PM",  # Slot 0 (The Mistake/Weird Slot)
+        "09:00 AM - 10:30 AM",  # Slot 1
+        "11:00 AM - 12:30 PM",  # Slot 2
+        "14:00 PM - 15:30 PM",  # Slot 3
+        "16:00 PM - 17:30 PM"   # Slot 4
+    ]
+    
     final_rows = [headers]
     requests = []
     current_row_idx = 1
-    total_cols = len(headers)
     
     for row in data_rows:
         date_str = row['Date']
-        raw_slots = row['Slots']
+        # Pass all 5 slots
+        final_slots = get_shifted_slots(
+            date_str, 
+            row['Slot0'], row['Slot1'], row['Slot2'], row['Slot3'], row['Slot4']
+        )
         
-        # Try to apply shift
-        final_slots = apply_cold_wave_shift(date_str, raw_slots, headers[1:]) # Skip "Date" header for mapping
-        
-        # Calculate max depth
-        depths = [len(s) for s in final_slots]
-        max_depth = max(depths) if depths else 1
+        max_depth = max(len(s) for s in final_slots) if final_slots else 1
         if max_depth == 0: max_depth = 1
         
         if max_depth > 1:
@@ -186,30 +159,27 @@ def update_google_sheet(sheet, data_rows, headers):
             })
 
         for i in range(max_depth):
-            current_data = [""] * total_cols
+            current_data = ["", "", "", "", "", ""] # 6 Columns
             if i == 0: current_data[0] = date_str
-            
             for slot_idx, slot_content in enumerate(final_slots):
-                col_index = slot_idx + 1 # +1 because col 0 is Date
-                if col_index < total_cols and i < len(slot_content):
+                col_index = slot_idx + 1
+                if i < len(slot_content):
                     cls = slot_content[i]
                     current_data[col_index] = cls['text']
                     bg_color = None
                     text_format = {"bold": True}
                     content_to_check = cls['full_content'].upper() 
-                    
                     for code in SUBJECT_COLORS:
                         if code in content_to_check:
                             bg_color = SUBJECT_COLORS[code]
                             break
-                    
                     if cls['type'] == "EXAM":
                         text_format["foregroundColor"] = {"red": 1.0, "green": 0.0, "blue": 0.0}
                         bg_color = {"red": 1.0, "green": 1.0, "blue": 1.0}
                     elif cls['type'] == "MAXI":
                         text_format["foregroundColor"] = {"red": 0.0, "green": 0.5, "blue": 0.0}
 
-                    # Formatting
+                    # Field Mask Construction
                     user_fmt = {"textFormat": text_format, "verticalAlignment": "TOP", "wrapStrategy": "WRAP"}
                     fields_list = ["textFormat", "verticalAlignment", "wrapStrategy"]
                     
@@ -229,44 +199,36 @@ def update_google_sheet(sheet, data_rows, headers):
 
     sheet.update(range_name="A1", values=final_rows)
     
-    # Dynamic Header Format
+    # Headers Format
     requests.append({
         "repeatCell": {
-            "range": {"sheetId": sheet.id, "startRowIndex": 0, "endRowIndex": 1, "startColumnIndex": 0, "endColumnIndex": total_cols},
+            "range": {"sheetId": sheet.id, "startRowIndex": 0, "endRowIndex": 1, "startColumnIndex": 0, "endColumnIndex": 6},
             "cell": {"userEnteredFormat": {"backgroundColor": {"red": 0.8, "green": 0.0, "blue": 0.0}, "textFormat": {"foregroundColor": {"red": 1.0, "green": 1.0, "blue": 1.0}, "bold": True}, "horizontalAlignment": "CENTER", "verticalAlignment": "MIDDLE"}},
             "fields": "userEnteredFormat(backgroundColor,textFormat,horizontalAlignment,verticalAlignment)"
         }
     })
-    # Dynamic Borders
+    # Borders
     requests.append({
         "updateBorders": {
-            "range": {"sheetId": sheet.id, "startRowIndex": 0, "endRowIndex": current_row_idx, "startColumnIndex": 0, "endColumnIndex": total_cols},
+            "range": {"sheetId": sheet.id, "startRowIndex": 0, "endRowIndex": current_row_idx, "startColumnIndex": 0, "endColumnIndex": 6},
             "top": {"style": "SOLID", "width": 1}, "bottom": {"style": "SOLID", "width": 1}, "left": {"style": "SOLID", "width": 1}, "right": {"style": "SOLID", "width": 1}, "innerHorizontal": {"style": "SOLID", "width": 1}, "innerVertical": {"style": "SOLID", "width": 1}
         }
     })
-    # Dynamic Column Widths
-    requests.append({"updateDimensionProperties": {"range": {"sheetId": sheet.id, "dimension": "COLUMNS", "startIndex": 0, "endIndex": total_cols}, "properties": {"pixelSize": 220}, "fields": "pixelSize"}})
+    # Column Widths
+    requests.append({"updateDimensionProperties": {"range": {"sheetId": sheet.id, "dimension": "COLUMNS", "startIndex": 0, "endIndex": 6}, "properties": {"pixelSize": 200}, "fields": "pixelSize"}})
 
     if requests: sheet.spreadsheet.batch_update({"requests": requests})
 
-def update_info_table(sheet, headers_len):
-    # Place info table 2 columns to the right of the schedule
-    start_col = headers_len + 1 
-    
+def update_info_table(sheet):
     headers = ["Course Code", "Course Name", "Course Credit", "Faculty"]
     data_rows = []
     for course in COURSE_DETAILS_LIST:
         data_rows.append([course["code"], course["name"], course["credit"], course["faculty"]])
     
-    # Calculate A1 Notation for start (e.g., H1, G1)
-    # Simple trick: we use gspread's numeric update or just guess H1 is safe. 
-    # For dynamic safety, let's just stick to H1 (Index 7) if headers are small, 
-    # or shift if headers are huge. For now, H1 is safe (col 7).
-    
     sheet.update(range_name="H1", values=[headers] + data_rows)
     requests = []
     
-    # Header Format
+    # Header Format (H1:K1)
     requests.append({
         "repeatCell": {
             "range": {"sheetId": sheet.id, "startRowIndex": 0, "endRowIndex": 1, "startColumnIndex": 7, "endColumnIndex": 11},
@@ -339,31 +301,15 @@ def fetch_and_update():
         
         soup = BeautifulSoup(driver.page_source, 'html.parser')
         table = soup.find('table', {'id': 'programwiseClassScheduleReport'})
-        
-        # --- DYNAMIC HEADER SCRAPING ---
-        header_row = table.find("tr") # First row is usually headers
-        if not header_row:
-             # Fallback if structure is weird, look for 'th'
-             scraped_headers = ["Date", "09:00 AM - 10:30 AM", "11:00 AM - 12:30 PM", "14:00 PM - 15:30 PM"]
-        else:
-             cols = header_row.find_all(['th', 'td'])
-             # Get text, strip whitespace
-             scraped_headers = [c.get_text(strip=True) for c in cols]
-             # Ensure first is Date (sometimes it's empty in HTML)
-             if not scraped_headers[0]: scraped_headers[0] = "Date"
-
-        print(f"Bot: Detect Columns: {scraped_headers}")
-        
         rows = table.find("tbody").find_all("tr")
+        
         scraped_data = []
         last_date = "Jan 01,2026 Thursday" 
 
         for row in rows:
             cells = row.find_all(['th', 'td'])
-            
-            # DYNAMIC VALIDATION: Skip if row doesn't match header count
-            # We allow -1 variance just in case Date cell is merged or weird
-            if len(cells) < len(scraped_headers) - 1: continue
+            # CHECK: We need Date + 5 Slots = 6 cells
+            if len(cells) < 6: continue
             
             raw_date = cells[0].get_text(separator=" ").replace('\xa0', '').strip()
             if len(raw_date) > 2: 
@@ -371,15 +317,13 @@ def fetch_and_update():
                 final_date = raw_date
             else: final_date = last_date
             
-            # Scrape ALL remaining cells as slots
-            current_slots = []
-            # Start from index 1 (skip date)
-            for i in range(1, len(cells)):
-                current_slots.append(parse_cell_data(str(cells[i])))
-            
             scraped_data.append({
                 "Date": final_date,
-                "Slots": current_slots
+                "Slot0": parse_cell_data(str(cells[1])), # 08:30 (Weird Slot)
+                "Slot1": parse_cell_data(str(cells[2])), # 09:00
+                "Slot2": parse_cell_data(str(cells[3])), # 11:00
+                "Slot3": parse_cell_data(str(cells[4])), # 14:00
+                "Slot4": parse_cell_data(str(cells[5]))  # 16:00
             })
             
         print(f"Bot: Found {len(scraped_data)} rows. Updating Sheets...")
@@ -394,9 +338,9 @@ def fetch_and_update():
             
         client = gspread.authorize(creds)
         sheet = client.open(SHEET_NAME).sheet1
-        update_google_sheet(sheet, scraped_data, scraped_headers)
-        update_info_table(sheet, len(scraped_headers))
-        print("Bot: SUCCESS! Schedule updated dynamically.")
+        update_google_sheet(sheet, scraped_data)
+        update_info_table(sheet)
+        print("Bot: SUCCESS! Schedule restored with all 5 slots.")
     except Exception as e:
         print(f"ERROR: {e}")
         driver.save_screenshot("error_final.png")
