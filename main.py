@@ -108,8 +108,9 @@ def get_shifted_slots(date_str, s0, s1, s2, s3, s4):
             # --- SHIFT LOGIC ---
             period_1 = (dt <= datetime(2026, 1, 26))
             period_2 = (datetime(2026, 1, 29) <= dt <= datetime(2026, 1, 31))
+            period_3 = (dt = datetime(2026, 2, 13))
             
-            if period_1 or period_2:
+            if period_1 or period_2 or period_3:
                 # Cold Shift: 9->11, 11->2, 2->4. 
                 # s0 (Weird) stays. s4 (Original 4pm) falls off.
                 return [s0, [], s1, s2, s3]
