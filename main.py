@@ -93,7 +93,7 @@ def parse_cell_data(html_content):
 def get_shifted_slots(date_str, s0, s1, s2, s3, s4):
     """
     Inputs: 
-    s0: 08:30-21:30 (Weird Slot)
+    s0: 08:00
     s1: 09:00
     s2: 11:00
     s3: 14:00
@@ -129,7 +129,7 @@ def update_google_sheet(sheet, data_rows):
     # --- UPDATED HEADERS FOR 5 SLOTS ---
     headers = [
         "Date", 
-        "08:30 AM - 21:30 PM",  # Slot 0 (The Mistake/Weird Slot)
+        "08:00 AM - 09:00 AM",  # Slot 0 (The Mistake/Weird Slot)
         "09:00 AM - 10:30 AM",  # Slot 1
         "11:00 AM - 12:30 PM",  # Slot 2
         "14:00 PM - 15:30 PM",  # Slot 3
@@ -320,7 +320,7 @@ def fetch_and_update():
             
             scraped_data.append({
                 "Date": final_date,
-                "Slot0": parse_cell_data(str(cells[1])), # 08:30 (Weird Slot)
+                "Slot0": parse_cell_data(str(cells[1])), # 08:00
                 "Slot1": parse_cell_data(str(cells[2])), # 09:00
                 "Slot2": parse_cell_data(str(cells[3])), # 11:00
                 "Slot3": parse_cell_data(str(cells[4])), # 14:00
