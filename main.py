@@ -90,10 +90,9 @@ def parse_cell_data(html_content):
         parsed_classes.append({"text": final_text, "full_content": block, "type": c_type})
     return parsed_classes
 
-def get_shifted_slots(date_str, s0, s1, s2, s3, s4):
+def get_shifted_slots(date_str, s1, s2, s3, s4):
     """
-    Inputs: 
-    s0: 08:00
+    Inputs:
     s1: 09:00
     s2: 11:00
     s3: 14:00
@@ -112,24 +111,23 @@ def get_shifted_slots(date_str, s0, s1, s2, s3, s4):
             
             if period_1 or period_2 or period_3:
                 # Cold Shift: 9->11, 11->2, 2->4. 
-                # s0 (Weird) stays. s4 (Original 4pm) falls off.
-                return [s0, [], s1, s2, s3]
+                # s4 (Original 4pm) falls off.
+                return [[], s1, s2, s3]
             else:
                 # Normal Schedule
-                return [s0, s1, s2, s3, s4]
+                return [s1, s2, s3, s4]
         else: 
-            return [s0, s1, s2, s3, s4]
+            return [s1, s2, s3, s4]
     except Exception as e: 
         print(f"Date Parse Warning: {e}")
-        return [s0, s1, s2, s3, s4]
+        return [s1, s2, s3, s4]
 
 def update_google_sheet(sheet, data_rows):
     clean_slate(sheet)
     
     # --- UPDATED HEADERS FOR 5 SLOTS ---
     headers = [
-        "Date", 
-        "08:00 AM - 09:00 AM",  # Slot 0 (The Mistake/Weird Slot)
+        "Date",
         "09:00 AM - 10:30 AM",  # Slot 1
         "11:00 AM - 12:30 PM",  # Slot 2
         "14:00 PM - 15:30 PM",  # Slot 3
@@ -320,11 +318,10 @@ def fetch_and_update():
             
             scraped_data.append({
                 "Date": final_date,
-                "Slot0": parse_cell_data(str(cells[1])), # 08:00
-                "Slot1": parse_cell_data(str(cells[2])), # 09:00
-                "Slot2": parse_cell_data(str(cells[3])), # 11:00
-                "Slot3": parse_cell_data(str(cells[4])), # 14:00
-                "Slot4": parse_cell_data(str(cells[5]))  # 16:00
+                "Slot1": parse_cell_data(str(cells[1])), # 09:00
+                "Slot2": parse_cell_data(str(cells[2])), # 11:00
+                "Slot3": parse_cell_data(str(cells[3])), # 14:00
+                "Slot4": parse_cell_data(str(cells[4]))  # 16:00
             })
             
         print(f"Bot: Found {len(scraped_data)} rows. Updating Sheets...")
@@ -341,7 +338,7 @@ def fetch_and_update():
         sheet = client.open(SHEET_NAME).sheet1
         update_google_sheet(sheet, scraped_data)
         update_info_table(sheet)
-        print("Bot: SUCCESS! Schedule restored with all 5 slots.")
+        print("Bot: SUCCESS! Schedule restored with all 4 slots.")
     except Exception as e:
         print(f"ERROR: {e}")
         driver.save_screenshot("error_final.png")
