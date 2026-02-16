@@ -90,47 +90,18 @@ def parse_cell_data(html_content):
         parsed_classes.append({"text": final_text, "full_content": block, "type": c_type})
     return parsed_classes
 
-def get_shifted_slots(date_str, s1, s2, s3, s4):
-    """
-    Inputs: 
-    s1: 09:00-10:30
-    s2: 11:00-12:30
-    s3: 14:00-15:30
-    s4: 16:00-17:30
-    """
-    try:
-        parts = date_str.split()
-        if len(parts) >= 2:
-            clean_date_str = f"{parts[0]} {parts[1]}"
-            dt = datetime.strptime(clean_date_str, "%b %d,%Y")
-            
-            # --- SHIFT LOGIC (Cold Wave) ---
-            period_1 = (dt <= datetime(2026, 1, 26))
-            period_2 = (datetime(2026, 1, 29) <= dt <= datetime(2026, 1, 31))
-            period_3 = (dt == datetime(2026, 2, 13))
-            
-            if period_1 or period_2 or period_3:
-                # Cold Shift: 9am becomes empty, everything shifts right
-                return [[], s1, s2, s3]
-            else:
-                # Normal Schedule
-                return [s1, s2, s3, s4]
-        else: 
-            return [s1, s2, s3, s4]
-    except Exception as e: 
-        print(f"Date Parse Warning: {e}")
-        return [s1, s2, s3, s4]
-
 def update_google_sheet(sheet, data_rows):
     clean_slate(sheet)
     
-    # --- STANDARD HEADERS (4 SLOTS) ---
+    # --- UPDATED HEADERS (6 SLOTS) ---
     headers = [
         "Date", 
-        "09:00 AM - 10:30 AM",  # Slot 1
-        "11:00 AM - 12:30 PM",  # Slot 2
-        "14:00 PM - 15:30 PM",  # Slot 3
-        "16:00 PM - 17:30 PM"   # Slot 4
+        "07:00 AM - 08:30 AM",  # Slot 1
+        "09:00 AM - 10:30 AM",  # Slot 2
+        "11:00 AM - 12:30 PM",  # Slot 3
+        "14:00 PM - 15:30 PM",  # Slot 4
+        "16:00 PM - 17:30 PM",  # Slot 5
+        "17:00 PM - 20:00 PM"   # Slot 6
     ]
     
     final_rows = [headers]
@@ -139,10 +110,11 @@ def update_google_sheet(sheet, data_rows):
     
     for row in data_rows:
         date_str = row['Date']
-        final_slots = get_shifted_slots(
-            date_str, 
-            row['Slot1'], row['Slot2'], row['Slot3'], row['Slot4']
-        )
+        # Combine all 6 slots into a list
+        final_slots = [
+            row['Slot1'], row['Slot2'], row['Slot3'], 
+            row['Slot4'], row['Slot5'], row['Slot6']
+        ]
         
         max_depth = max(len(s) for s in final_slots) if final_slots else 1
         if max_depth == 0: max_depth = 1
@@ -156,7 +128,7 @@ def update_google_sheet(sheet, data_rows):
             })
 
         for i in range(max_depth):
-            current_data = ["", "", "", "", ""] # 5 Columns
+            current_data = [""] * 7  # 7 Columns (Date + 6 Slots)
             if i == 0: current_data[0] = date_str
             for slot_idx, slot_content in enumerate(final_slots):
                 col_index = slot_idx + 1
@@ -199,7 +171,7 @@ def update_google_sheet(sheet, data_rows):
     # Headers Format
     requests.append({
         "repeatCell": {
-            "range": {"sheetId": sheet.id, "startRowIndex": 0, "endRowIndex": 1, "startColumnIndex": 0, "endColumnIndex": 5},
+            "range": {"sheetId": sheet.id, "startRowIndex": 0, "endRowIndex": 1, "startColumnIndex": 0, "endColumnIndex": 7},
             "cell": {"userEnteredFormat": {"backgroundColor": {"red": 0.8, "green": 0.0, "blue": 0.0}, "textFormat": {"foregroundColor": {"red": 1.0, "green": 1.0, "blue": 1.0}, "bold": True}, "horizontalAlignment": "CENTER", "verticalAlignment": "MIDDLE"}},
             "fields": "userEnteredFormat(backgroundColor,textFormat,horizontalAlignment,verticalAlignment)"
         }
@@ -207,12 +179,12 @@ def update_google_sheet(sheet, data_rows):
     # Borders
     requests.append({
         "updateBorders": {
-            "range": {"sheetId": sheet.id, "startRowIndex": 0, "endRowIndex": current_row_idx, "startColumnIndex": 0, "endColumnIndex": 5},
+            "range": {"sheetId": sheet.id, "startRowIndex": 0, "endRowIndex": current_row_idx, "startColumnIndex": 0, "endColumnIndex": 7},
             "top": {"style": "SOLID", "width": 1}, "bottom": {"style": "SOLID", "width": 1}, "left": {"style": "SOLID", "width": 1}, "right": {"style": "SOLID", "width": 1}, "innerHorizontal": {"style": "SOLID", "width": 1}, "innerVertical": {"style": "SOLID", "width": 1}
         }
     })
     # Column Widths
-    requests.append({"updateDimensionProperties": {"range": {"sheetId": sheet.id, "dimension": "COLUMNS", "startIndex": 0, "endIndex": 5}, "properties": {"pixelSize": 200}, "fields": "pixelSize"}})
+    requests.append({"updateDimensionProperties": {"range": {"sheetId": sheet.id, "dimension": "COLUMNS", "startIndex": 0, "endIndex": 7}, "properties": {"pixelSize": 180}, "fields": "pixelSize"}})
 
     if requests: sheet.spreadsheet.batch_update({"requests": requests})
 
@@ -222,13 +194,14 @@ def update_info_table(sheet):
     for course in COURSE_DETAILS_LIST:
         data_rows.append([course["code"], course["name"], course["credit"], course["faculty"]])
     
-    sheet.update(range_name="H1", values=[headers] + data_rows)
+    # Position Info Table at I1 (Index 8) since Schedule ends at G (Index 7)
+    sheet.update(range_name="I1", values=[headers] + data_rows)
     requests = []
     
     # Header Format
     requests.append({
         "repeatCell": {
-            "range": {"sheetId": sheet.id, "startRowIndex": 0, "endRowIndex": 1, "startColumnIndex": 7, "endColumnIndex": 11},
+            "range": {"sheetId": sheet.id, "startRowIndex": 0, "endRowIndex": 1, "startColumnIndex": 8, "endColumnIndex": 12},
             "cell": {"userEnteredFormat": {"backgroundColor": {"red": 0.8, "green": 0.0, "blue": 0.0}, "textFormat": {"foregroundColor": {"red": 1.0, "green": 1.0, "blue": 1.0}, "bold": True}, "horizontalAlignment": "CENTER", "verticalAlignment": "MIDDLE"}},
             "fields": "userEnteredFormat(backgroundColor,textFormat,horizontalAlignment,verticalAlignment)"
         }
@@ -239,7 +212,7 @@ def update_info_table(sheet):
         bg_color = SUBJECT_COLORS.get(course["code"], {"red": 1, "green": 1, "blue": 1})
         requests.append({
             "repeatCell": {
-                "range": {"sheetId": sheet.id, "startRowIndex": current_row_idx, "endRowIndex": current_row_idx + 1, "startColumnIndex": 7, "endColumnIndex": 11},
+                "range": {"sheetId": sheet.id, "startRowIndex": current_row_idx, "endRowIndex": current_row_idx + 1, "startColumnIndex": 8, "endColumnIndex": 12},
                 "cell": {"userEnteredFormat": {"backgroundColor": bg_color, "textFormat": {"bold": False}, "verticalAlignment": "MIDDLE"}},
                 "fields": "userEnteredFormat(backgroundColor,textFormat,verticalAlignment)"
             }
@@ -248,12 +221,12 @@ def update_info_table(sheet):
     # Borders
     requests.append({
         "updateBorders": {
-            "range": {"sheetId": sheet.id, "startRowIndex": 0, "endRowIndex": current_row_idx, "startColumnIndex": 7, "endColumnIndex": 11},
+            "range": {"sheetId": sheet.id, "startRowIndex": 0, "endRowIndex": current_row_idx, "startColumnIndex": 8, "endColumnIndex": 12},
             "top": {"style": "SOLID", "width": 1}, "bottom": {"style": "SOLID", "width": 1}, "left": {"style": "SOLID", "width": 1}, "right": {"style": "SOLID", "width": 1}, "innerHorizontal": {"style": "SOLID", "width": 1}, "innerVertical": {"style": "SOLID", "width": 1}
         }
     })
     # Widths
-    requests.append({"updateDimensionProperties": {"range": {"sheetId": sheet.id, "dimension": "COLUMNS", "startIndex": 7, "endIndex": 11}, "properties": {"pixelSize": 250}, "fields": "pixelSize"}})
+    requests.append({"updateDimensionProperties": {"range": {"sheetId": sheet.id, "dimension": "COLUMNS", "startIndex": 8, "endIndex": 12}, "properties": {"pixelSize": 250}, "fields": "pixelSize"}})
 
     if requests: sheet.spreadsheet.batch_update({"requests": requests})
 
@@ -305,7 +278,8 @@ def fetch_and_update():
 
         for row in rows:
             cells = row.find_all(['th', 'td'])
-            if len(cells) < 5: continue
+            # CHECK: Date + 6 Slots = 7 cells minimum
+            if len(cells) < 7: continue
             
             raw_date = cells[0].get_text(separator=" ").replace('\xa0', '').strip()
             if len(raw_date) > 2: 
@@ -315,10 +289,12 @@ def fetch_and_update():
             
             scraped_data.append({
                 "Date": final_date,
-                "Slot1": parse_cell_data(str(cells[1])), # 09:00 AM
-                "Slot2": parse_cell_data(str(cells[2])), # 11:00 AM
-                "Slot3": parse_cell_data(str(cells[3])), # 14:00 PM
-                "Slot4": parse_cell_data(str(cells[4]))  # 16:00 PM
+                "Slot1": parse_cell_data(str(cells[1])), # 07:00 AM
+                "Slot2": parse_cell_data(str(cells[2])), # 09:00 AM
+                "Slot3": parse_cell_data(str(cells[3])), # 11:00 AM
+                "Slot4": parse_cell_data(str(cells[4])), # 14:00 PM
+                "Slot5": parse_cell_data(str(cells[5])), # 16:00 PM
+                "Slot6": parse_cell_data(str(cells[6]))  # 17:00 PM
             })
             
         print(f"Bot: Found {len(scraped_data)} rows. Updating Sheets...")
@@ -335,7 +311,7 @@ def fetch_and_update():
         sheet = client.open(SHEET_NAME).sheet1
         update_google_sheet(sheet, scraped_data)
         update_info_table(sheet)
-        print("Bot: SUCCESS! Schedule restored to standard 4 slots.")
+        print("Bot: SUCCESS! Schedule updated to 6 slots.")
     except Exception as e:
         print(f"ERROR: {e}")
         driver.save_screenshot("error_final.png")
