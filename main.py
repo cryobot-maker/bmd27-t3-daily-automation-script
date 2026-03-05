@@ -15,10 +15,8 @@ from selenium.webdriver.support.ui import Select
 from webdriver_manager.chrome import ChromeDriverManager
 from bs4 import BeautifulSoup
 
-# Load local env vars
 load_dotenv()
 
-# --- CONFIGURATION ---
 LOGIN_URL = "https://erp.xlri.ac.in/login.htm"
 USERNAME = os.getenv("XLRI_USERNAME")
 PASSWORD = os.getenv("XLRI_PASSWORD")
@@ -51,7 +49,6 @@ COURSE_DETAILS_LIST = [
 ]
 
 def clean_slate(sheet):
-    """Deep Clean."""
     try:
         sheet.clear()
         sheet.format("A:Z", {"backgroundColor": {"red": 1.0, "green": 1.0, "blue": 1.0}})
@@ -90,18 +87,36 @@ def parse_cell_data(html_content):
         parsed_classes.append({"text": final_text, "full_content": block, "type": c_type})
     return parsed_classes
 
+def get_shifted_slots(date_str, s1, s2, s3, s4, s5):
+    try:
+        parts = date_str.split()
+        if len(parts) >= 2:
+            clean_date_str = f"{parts[0]} {parts[1]}"
+            dt = datetime.strptime(clean_date_str, "%b %d,%Y")
+            
+            period_1 = (dt <= datetime(2026, 1, 26))
+            period_2 = (datetime(2026, 1, 29) <= dt <= datetime(2026, 1, 31))
+            
+            if period_1 or period_2:
+                return [s1, [], s2, s3, s4]
+            else:
+                return [s1, s2, s3, s4, s5]
+        else: 
+            return [s1, s2, s3, s4, s5]
+    except Exception as e: 
+        print(f"Date Parse Warning: {e}")
+        return [s1, s2, s3, s4, s5]
+
 def update_google_sheet(sheet, data_rows):
     clean_slate(sheet)
     
-    # --- UPDATED HEADERS (6 SLOTS) ---
     headers = [
         "Date", 
-        "07:00 AM - 08:30 AM",  # Slot 1
-        "09:00 AM - 10:30 AM",  # Slot 2
-        "11:00 AM - 12:30 PM",  # Slot 3
-        "14:00 PM - 15:30 PM",  # Slot 4
-        "16:00 PM - 17:30 PM",  # Slot 5
-        "17:00 PM - 20:00 PM"   # Slot 6
+        "07:00 AM - 08:30 AM",
+        "09:00 AM - 10:30 AM",
+        "11:00 AM - 12:30 PM",
+        "14:00 PM - 15:30 PM",
+        "16:00 PM - 17:30 PM"
     ]
     
     final_rows = [headers]
@@ -110,11 +125,10 @@ def update_google_sheet(sheet, data_rows):
     
     for row in data_rows:
         date_str = row['Date']
-        # Combine all 6 slots into a list
-        final_slots = [
-            row['Slot1'], row['Slot2'], row['Slot3'], 
-            row['Slot4'], row['Slot5'], row['Slot6']
-        ]
+        final_slots = get_shifted_slots(
+            date_str, 
+            row['Slot1'], row['Slot2'], row['Slot3'], row['Slot4'], row['Slot5']
+        )
         
         max_depth = max(len(s) for s in final_slots) if final_slots else 1
         if max_depth == 0: max_depth = 1
@@ -128,7 +142,7 @@ def update_google_sheet(sheet, data_rows):
             })
 
         for i in range(max_depth):
-            current_data = [""] * 7  # 7 Columns (Date + 6 Slots)
+            current_data = ["", "", "", "", "", ""] 
             if i == 0: current_data[0] = date_str
             for slot_idx, slot_content in enumerate(final_slots):
                 col_index = slot_idx + 1
@@ -148,7 +162,6 @@ def update_google_sheet(sheet, data_rows):
                     elif cls['type'] == "MAXI":
                         text_format["foregroundColor"] = {"red": 0.0, "green": 0.5, "blue": 0.0}
 
-                    # Field Mask Construction
                     user_fmt = {"textFormat": text_format, "verticalAlignment": "TOP", "wrapStrategy": "WRAP"}
                     fields_list = ["textFormat", "verticalAlignment", "wrapStrategy"]
                     
@@ -168,23 +181,22 @@ def update_google_sheet(sheet, data_rows):
 
     sheet.update(range_name="A1", values=final_rows)
     
-    # Headers Format
     requests.append({
         "repeatCell": {
-            "range": {"sheetId": sheet.id, "startRowIndex": 0, "endRowIndex": 1, "startColumnIndex": 0, "endColumnIndex": 7},
+            "range": {"sheetId": sheet.id, "startRowIndex": 0, "endRowIndex": 1, "startColumnIndex": 0, "endColumnIndex": 6},
             "cell": {"userEnteredFormat": {"backgroundColor": {"red": 0.8, "green": 0.0, "blue": 0.0}, "textFormat": {"foregroundColor": {"red": 1.0, "green": 1.0, "blue": 1.0}, "bold": True}, "horizontalAlignment": "CENTER", "verticalAlignment": "MIDDLE"}},
             "fields": "userEnteredFormat(backgroundColor,textFormat,horizontalAlignment,verticalAlignment)"
         }
     })
-    # Borders
+    
     requests.append({
         "updateBorders": {
-            "range": {"sheetId": sheet.id, "startRowIndex": 0, "endRowIndex": current_row_idx, "startColumnIndex": 0, "endColumnIndex": 7},
+            "range": {"sheetId": sheet.id, "startRowIndex": 0, "endRowIndex": current_row_idx, "startColumnIndex": 0, "endColumnIndex": 6},
             "top": {"style": "SOLID", "width": 1}, "bottom": {"style": "SOLID", "width": 1}, "left": {"style": "SOLID", "width": 1}, "right": {"style": "SOLID", "width": 1}, "innerHorizontal": {"style": "SOLID", "width": 1}, "innerVertical": {"style": "SOLID", "width": 1}
         }
     })
-    # Column Widths
-    requests.append({"updateDimensionProperties": {"range": {"sheetId": sheet.id, "dimension": "COLUMNS", "startIndex": 0, "endIndex": 7}, "properties": {"pixelSize": 180}, "fields": "pixelSize"}})
+    
+    requests.append({"updateDimensionProperties": {"range": {"sheetId": sheet.id, "dimension": "COLUMNS", "startIndex": 0, "endIndex": 6}, "properties": {"pixelSize": 200}, "fields": "pixelSize"}})
 
     if requests: sheet.spreadsheet.batch_update({"requests": requests})
 
@@ -194,39 +206,37 @@ def update_info_table(sheet):
     for course in COURSE_DETAILS_LIST:
         data_rows.append([course["code"], course["name"], course["credit"], course["faculty"]])
     
-    # Position Info Table at I1 (Index 8) since Schedule ends at G (Index 7)
-    sheet.update(range_name="I1", values=[headers] + data_rows)
+    sheet.update(range_name="H1", values=[headers] + data_rows)
     requests = []
     
-    # Header Format
     requests.append({
         "repeatCell": {
-            "range": {"sheetId": sheet.id, "startRowIndex": 0, "endRowIndex": 1, "startColumnIndex": 8, "endColumnIndex": 12},
+            "range": {"sheetId": sheet.id, "startRowIndex": 0, "endRowIndex": 1, "startColumnIndex": 7, "endColumnIndex": 11},
             "cell": {"userEnteredFormat": {"backgroundColor": {"red": 0.8, "green": 0.0, "blue": 0.0}, "textFormat": {"foregroundColor": {"red": 1.0, "green": 1.0, "blue": 1.0}, "bold": True}, "horizontalAlignment": "CENTER", "verticalAlignment": "MIDDLE"}},
             "fields": "userEnteredFormat(backgroundColor,textFormat,horizontalAlignment,verticalAlignment)"
         }
     })
-    # Rows
+    
     current_row_idx = 1
     for course in COURSE_DETAILS_LIST:
         bg_color = SUBJECT_COLORS.get(course["code"], {"red": 1, "green": 1, "blue": 1})
         requests.append({
             "repeatCell": {
-                "range": {"sheetId": sheet.id, "startRowIndex": current_row_idx, "endRowIndex": current_row_idx + 1, "startColumnIndex": 8, "endColumnIndex": 12},
+                "range": {"sheetId": sheet.id, "startRowIndex": current_row_idx, "endRowIndex": current_row_idx + 1, "startColumnIndex": 7, "endColumnIndex": 11},
                 "cell": {"userEnteredFormat": {"backgroundColor": bg_color, "textFormat": {"bold": False}, "verticalAlignment": "MIDDLE"}},
                 "fields": "userEnteredFormat(backgroundColor,textFormat,verticalAlignment)"
             }
         })
         current_row_idx += 1
-    # Borders
+        
     requests.append({
         "updateBorders": {
-            "range": {"sheetId": sheet.id, "startRowIndex": 0, "endRowIndex": current_row_idx, "startColumnIndex": 8, "endColumnIndex": 12},
+            "range": {"sheetId": sheet.id, "startRowIndex": 0, "endRowIndex": current_row_idx, "startColumnIndex": 7, "endColumnIndex": 11},
             "top": {"style": "SOLID", "width": 1}, "bottom": {"style": "SOLID", "width": 1}, "left": {"style": "SOLID", "width": 1}, "right": {"style": "SOLID", "width": 1}, "innerHorizontal": {"style": "SOLID", "width": 1}, "innerVertical": {"style": "SOLID", "width": 1}
         }
     })
-    # Widths
-    requests.append({"updateDimensionProperties": {"range": {"sheetId": sheet.id, "dimension": "COLUMNS", "startIndex": 8, "endIndex": 12}, "properties": {"pixelSize": 250}, "fields": "pixelSize"}})
+    
+    requests.append({"updateDimensionProperties": {"range": {"sheetId": sheet.id, "dimension": "COLUMNS", "startIndex": 7, "endIndex": 11}, "properties": {"pixelSize": 250}, "fields": "pixelSize"}})
 
     if requests: sheet.spreadsheet.batch_update({"requests": requests})
 
@@ -278,8 +288,7 @@ def fetch_and_update():
 
         for row in rows:
             cells = row.find_all(['th', 'td'])
-            # CHECK: Date + 6 Slots = 7 cells minimum
-            if len(cells) < 7: continue
+            if len(cells) < 6: continue
             
             raw_date = cells[0].get_text(separator=" ").replace('\xa0', '').strip()
             if len(raw_date) > 2: 
@@ -289,12 +298,11 @@ def fetch_and_update():
             
             scraped_data.append({
                 "Date": final_date,
-                "Slot1": parse_cell_data(str(cells[1])), # 07:00 AM
-                "Slot2": parse_cell_data(str(cells[2])), # 09:00 AM
-                "Slot3": parse_cell_data(str(cells[3])), # 11:00 AM
-                "Slot4": parse_cell_data(str(cells[4])), # 14:00 PM
-                "Slot5": parse_cell_data(str(cells[5])), # 16:00 PM
-                "Slot6": parse_cell_data(str(cells[6]))  # 17:00 PM
+                "Slot1": parse_cell_data(str(cells[1])),
+                "Slot2": parse_cell_data(str(cells[2])),
+                "Slot3": parse_cell_data(str(cells[3])),
+                "Slot4": parse_cell_data(str(cells[4])),
+                "Slot5": parse_cell_data(str(cells[5])) 
             })
             
         print(f"Bot: Found {len(scraped_data)} rows. Updating Sheets...")
@@ -311,7 +319,7 @@ def fetch_and_update():
         sheet = client.open(SHEET_NAME).sheet1
         update_google_sheet(sheet, scraped_data)
         update_info_table(sheet)
-        print("Bot: SUCCESS! Schedule updated to 6 slots.")
+        print("Bot: SUCCESS! Schedule updated to 5 slots.")
     except Exception as e:
         print(f"ERROR: {e}")
         driver.save_screenshot("error_final.png")
